@@ -31,6 +31,9 @@ interface Tweet {
     attachments?: {
       media_keys?: string[];
     };
+    note_tweet?: {
+      text: string;
+    };
   };
   includes?: {
     users?: Array<{
@@ -98,6 +101,9 @@ async function sendToDiscord(tweet: Tweet): Promise<void> {
   const displayName = user?.name || username;
   const avatarUrl = user?.profile_image_url;
 
+  // Use full text from note_tweet if available (for tweets > 280 chars), strip trailing t.co links
+  const rawText = (tweet.data.note_tweet?.text || tweet.data.text).replace(/\s*https:\/\/t\.co\/\S+\s*$/, "");
+
   // Use fxtwitter for the link
   const tweetUrl = `https://fxtwitter.com/${username}/status/${tweet.data.id}`;
 
@@ -113,7 +119,7 @@ async function sendToDiscord(tweet: Tweet): Promise<void> {
       url: `https://x.com/${username}`,
       icon_url: avatarUrl,
     },
-    description: `${tweet.data.text}\n\n${tweetUrl}`,
+    description: `${rawText}\n\n${tweetUrl}`,
     color: 0x1da1f2, // Twitter blue
     timestamp: tweet.data.created_at,
   };
@@ -140,7 +146,7 @@ async function startStream(): Promise<void> {
   console.log("Starting filtered stream...");
 
   // Include attachments and media in expansions
-  const url = `${STREAM_URL}?tweet.fields=created_at,author_id,attachments&expansions=author_id,attachments.media_keys&user.fields=username,name,profile_image_url&media.fields=url,preview_image_url`;
+  const url = `${STREAM_URL}?tweet.fields=created_at,author_id,attachments,note_tweet&expansions=author_id,attachments.media_keys&user.fields=username,name,profile_image_url&media.fields=url,preview_image_url`;
 
   try {
     const res = await fetch(url, {
@@ -198,7 +204,7 @@ async function startStream(): Promise<void> {
 
 async function fetchTweet(tweetId: string): Promise<Tweet | null> {
   // Include attachments and media in expansions
-  const url = `https://api.x.com/2/tweets/${tweetId}?tweet.fields=created_at,author_id,attachments&expansions=author_id,attachments.media_keys&user.fields=username,name,profile_image_url&media.fields=url,preview_image_url`;
+  const url = `https://api.x.com/2/tweets/${tweetId}?tweet.fields=created_at,author_id,attachments,note_tweet&expansions=author_id,attachments.media_keys&user.fields=username,name,profile_image_url&media.fields=url,preview_image_url`;
 
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${X_BEARER_TOKEN}` },
