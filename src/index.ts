@@ -28,6 +28,9 @@ interface Tweet {
     text: string;
     author_id: string;
     created_at: string;
+    attachments?: {
+      media_keys?: string[];
+    };
   };
   includes?: {
     users?: Array<{
@@ -35,6 +38,12 @@ interface Tweet {
       username: string;
       name: string;
       profile_image_url?: string;
+    }>;
+    media?: Array<{
+      media_key: string;
+      type: string;
+      url?: string;
+      preview_image_url?: string;
     }>;
   };
 }
@@ -89,9 +98,16 @@ async function sendToDiscord(tweet: Tweet): Promise<void> {
   const displayName = user?.name || username;
   const avatarUrl = user?.profile_image_url;
 
-  const tweetUrl = `https://x.com/${username}/status/${tweet.data.id}`;
+  // Use fxtwitter for the link
+  const tweetUrl = `https://fxtwitter.com/${username}/status/${tweet.data.id}`;
 
-  const embed = {
+  // Get media attachments
+  const mediaKeys = tweet.data.attachments?.media_keys || [];
+  const media = tweet.includes?.media?.filter((m) => mediaKeys.includes(m.media_key)) || [];
+  const images = media.filter((m) => m.type === "photo");
+  const firstImage = images[0]?.url || images[0]?.preview_image_url;
+
+  const embed: Record<string, unknown> = {
     author: {
       name: `${displayName} (@${username})`,
       url: `https://x.com/${username}`,
@@ -103,13 +119,17 @@ async function sendToDiscord(tweet: Tweet): Promise<void> {
     timestamp: tweet.data.created_at,
   };
 
+  // Add image if available
+  if (firstImage) {
+    embed.image = { url: firstImage };
+  }
+
   await fetch(DISCORD_WEBHOOK_URL!, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       username: "X Feed",
-      avatar_url:
-        "https://abs.twimg.com/favicons/twitter.2.ico",
+      avatar_url: "https://abs.twimg.com/favicons/twitter.2.ico",
       embeds: [embed],
     }),
   });
@@ -120,7 +140,8 @@ async function sendToDiscord(tweet: Tweet): Promise<void> {
 async function startStream(): Promise<void> {
   console.log("Starting filtered stream...");
 
-  const url = `${STREAM_URL}?tweet.fields=created_at,author_id&expansions=author_id&user.fields=username,name,profile_image_url`;
+  // Include attachments and media in expansions
+  const url = `${STREAM_URL}?tweet.fields=created_at,author_id,attachments&expansions=author_id,attachments.media_keys&user.fields=username,name,profile_image_url&media.fields=url,preview_image_url`;
 
   try {
     const res = await fetch(url, {
@@ -177,7 +198,8 @@ async function startStream(): Promise<void> {
 }
 
 async function fetchTweet(tweetId: string): Promise<Tweet | null> {
-  const url = `https://api.x.com/2/tweets/${tweetId}?tweet.fields=created_at,author_id&expansions=author_id&user.fields=username,name,profile_image_url`;
+  // Include attachments and media in expansions
+  const url = `https://api.x.com/2/tweets/${tweetId}?tweet.fields=created_at,author_id,attachments&expansions=author_id,attachments.media_keys&user.fields=username,name,profile_image_url&media.fields=url,preview_image_url`;
 
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${X_BEARER_TOKEN}` },
