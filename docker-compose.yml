@@ -1,0 +1,6 @@
+services:
+  x-discord-forwarder:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
