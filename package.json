@@ -1,0 +1,22 @@
+{
+  "name": "cassandra-discord",
+  "version": "1.0.0",
+  "description": "Forwards X (Twitter) posts to Discord via webhook using Filtered Stream API",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "docker:build": "docker build -t cassandra-discord .",
+    "docker:run": "docker run --env-file .env cassandra-discord"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
