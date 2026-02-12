@@ -113,8 +113,7 @@ async function sendToDiscord(tweet: Tweet): Promise<void> {
       url: `https://x.com/${username}`,
       icon_url: avatarUrl,
     },
-    description: tweet.data.text,
-    url: tweetUrl,
+    description: `${tweet.data.text}\n\n${tweetUrl}`,
     color: 0x1da1f2, // Twitter blue
     timestamp: tweet.data.created_at,
   };
