@@ -1,11 +1,8 @@
-import { spawn } from "node:child_process";
-import * as readline from "node:readline";
-
 const X_BEARER_TOKEN = process.env.X_BEARER_TOKEN;
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 const TRACKED_USERS = (process.env.TRACKED_USERS || "")
   .split(",")
-  .map((u) => u.trim())
+  .map((u: string) => u.trim())
   .filter(Boolean);
 
 if (!X_BEARER_TOKEN) {
@@ -122,44 +119,64 @@ async function sendToDiscord(tweet: Tweet): Promise<void> {
 async function startStream(): Promise<void> {
   console.log("Starting filtered stream...");
 
-  // Use curl for the persistent HTTP connection
-  const curl = spawn("curl", [
-    "-N", // Disable buffering
-    "-H",
-    `Authorization: Bearer ${X_BEARER_TOKEN}`,
-    `${STREAM_URL}?tweet.fields=created_at,author_id&expansions=author_id&user.fields=username,name,profile_image_url`,
-  ]);
+  const url = `${STREAM_URL}?tweet.fields=created_at,author_id&expansions=author_id&user.fields=username,name,profile_image_url`;
 
-  const rl = readline.createInterface({ input: curl.stdout });
+  try {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${X_BEARER_TOKEN}` },
+    });
 
-  rl.on("line", (line) => {
-    if (!line.trim()) {
-      // Empty line = keep-alive signal
-      return;
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Stream error ${res.status}: ${err}`);
     }
 
-    try {
-      const tweet = JSON.parse(line) as Tweet;
-      if (tweet.data) {
-        sendToDiscord(tweet).catch((err) => console.error("Discord error:", err));
+    if (!res.body) {
+      throw new Error("No response body");
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (done) {
+        console.log("Stream ended, reconnecting in 5s...");
+        setTimeout(startStream, 5000);
+        return;
       }
-    } catch {
-      // Not JSON, probably keep-alive or signal
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || ""; // Keep incomplete line in buffer
+
+      for (const line of lines) {
+        if (!line.trim()) {
+          // Empty line = keep-alive
+          continue;
+        }
+
+        try {
+          const tweet = JSON.parse(line) as Tweet;
+          if (tweet.data) {
+            sendToDiscord(tweet).catch((err) => console.error("Discord error:", err));
+          }
+        } catch {
+          // Not JSON, probably a signal
+        }
+      }
     }
-  });
-
-  curl.stderr.on("data", (data) => {
-    console.error(`curl stderr: ${data}`);
-  });
-
-  curl.on("close", (code) => {
-    console.log(`Stream closed with code ${code}, reconnecting in 5s...`);
+  } catch (err) {
+    console.error("Stream error:", err);
+    console.log("Reconnecting in 5s...");
     setTimeout(startStream, 5000);
-  });
+  }
 }
 
 async function main() {
-  console.log("Cassandra Discord - X Filtered Stream → Discord Webhook");
+  console.log("X Discord Forwarder - X Filtered Stream → Discord Webhook");
   console.log(`Tracking users: ${TRACKED_USERS.join(", ")}`);
 
   await setRules();
