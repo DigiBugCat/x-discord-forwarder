@@ -4,6 +4,7 @@ const TRACKED_USERS = (process.env.TRACKED_USERS || "")
   .split(",")
   .map((u: string) => u.trim())
   .filter(Boolean);
+const TEST_TWEET_ID = process.env.TEST_TWEET_ID; // Optional: fetch and post a specific tweet, then exit
 
 if (!X_BEARER_TOKEN) {
   console.error("Missing X_BEARER_TOKEN");
@@ -13,7 +14,7 @@ if (!DISCORD_WEBHOOK_URL) {
   console.error("Missing DISCORD_WEBHOOK_URL");
   process.exit(1);
 }
-if (TRACKED_USERS.length === 0) {
+if (TRACKED_USERS.length === 0 && !TEST_TWEET_ID) {
   console.error("No TRACKED_USERS configured");
   process.exit(1);
 }
@@ -175,10 +176,37 @@ async function startStream(): Promise<void> {
   }
 }
 
+async function fetchTweet(tweetId: string): Promise<Tweet | null> {
+  const url = `https://api.x.com/2/tweets/${tweetId}?tweet.fields=created_at,author_id&expansions=author_id&user.fields=username,name,profile_image_url`;
+
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${X_BEARER_TOKEN}` },
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    console.error(`Failed to fetch tweet: ${err}`);
+    return null;
+  }
+
+  return (await res.json()) as Tweet;
+}
+
 async function main() {
   console.log("X Discord Forwarder - X Filtered Stream → Discord Webhook");
-  console.log(`Tracking users: ${TRACKED_USERS.join(", ")}`);
 
+  // Test mode: fetch specific tweet and exit
+  if (TEST_TWEET_ID) {
+    console.log(`Test mode: fetching tweet ${TEST_TWEET_ID}`);
+    const tweet = await fetchTweet(TEST_TWEET_ID);
+    if (tweet?.data) {
+      await sendToDiscord(tweet);
+      console.log("Test complete!");
+    }
+    process.exit(0);
+  }
+
+  console.log(`Tracking users: ${TRACKED_USERS.join(", ")}`);
   await setRules();
   await startStream();
 }
