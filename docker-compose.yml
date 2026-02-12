@@ -4,3 +4,4 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    # For test mode (TEST_TWEET_ID), use: docker compose up --build --no-deps --abort-on-container-exit
